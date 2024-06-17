@@ -19,14 +19,10 @@ El repositorio se divide en los siguientes archivos:
 
 Para reproducir los resultados y análisis presentados en el trabajo, sigue estos pasos:
 
-1. **Clonar el repositorio**:
-    ```bash
-    git clone https://github.com/marcosrgfd/Modelizacion-de-la-dinamica-fago-bacteria-para-una-cepa-multirresistente-de-Klebsiella-pneumoniae.git
-    ```
-2. **Navegar al directorio del repositorio**:
-    ```bash
-    cd tu_repositorio
-    ```
+1. **Descargar la carpeta de datos y añadirla al directorio de trabajo**:
+   
+2. **Descargar los archivos de código en formato RMarkdown**:
+   
 3. **Abrir los archivos RMarkdown** en RStudio y ejecutar los chunks de código según sea necesario.
 
 ## Requisitos
@@ -34,7 +30,7 @@ Para reproducir los resultados y análisis presentados en el trabajo, sigue esto
 Asegúrate de tener las siguientes dependencias instaladas para ejecutar los scripts correctamente:
 - R
 - RStudio
-- Paquetes R necesarios (detallados en cada archivo .rmd)
+- Paquetes R necesarios (detallados en cada archivo .Rmd)
 
 ## Contacto
 
