@@ -1,0 +1,406 @@
+# ESTIMACIÓN ECUACIÓN LOGÍSTICA CON L-M
+
+Código para la estimación de la tasa de crecimiento y capacidad de carga máxima del entorno.
+```{r}
+# Cargamos librerías necesarias
+library(ggplot2) # librería para gráficos
+library(reshape2) # librería para remodelar datos
+library(deSolve) # resolutor de ecuaciones diferenciales
+library(minpack.lm) # ajuste por mínimos cuadrados utilizando el algoritmo de Levenberg-Marquart
+library(readxl) # abrir archivos .xlsx
+library(xtable) # generar tablas en formato látex
+```
+
+```{r}
+# Cargamos los datos originales proporcionados por el aparato
+control1 <- as.data.frame(read_excel("./datos/control_od1.xlsx"))
+# Eliminamos las réplicas que la máquina detecta como problemáticas
+control1 <- control1[c(1:91), -c(2:5, 21:25)]
+```
+
+Para cada réplica se hace una estimación de los parámetros k y c. Calculamos la media y sd de los parámetros y representamos frente a la media de las réplicas con la estimación de los parámetros.
+
+```{r}
+# Base de datos donde se guardarán todas las iteraciones (una por réplica)
+datos_reps <- data.frame(k = numeric(), c = numeric(), rse = numeric())
+
+# Bucle que realiza el Levenberg-Marquart sobre todas las réplicas y devuelve k, C y RSE
+for (i in c(2:16)) {
+  RSV <- control1[, i]
+  notimes <- control1$Time
+  A0 <- control1[1, i]
+
+  # función de tasa
+  rxnrate <- function(t, c, parms) {
+    # constantes pasadas a través de una lista llamada 'parms'
+    k1 <- parms$k1 # TASA DE CRECIMIENTO
+    k2 <- parms$k2 # CAPACIDAD DE CARGA
+
+    # La función derivada dA/dt se calculan a continuación, donde A es la bacteria salvaje
+    r <- rep(0, length(c))
+    r[1] <- k1 * c["A"] * (1 - c["A"] / k2) # dY/dt
+
+    # the computed derivatives are returned as a list
+    # order of derivatives needs to be the same as the order of species in c
+    return(list(r))
+  }
+
+  # Función que lleva a cabo el algoritmo de mínimos cuadrados
+  ssq <- function(parms) {
+    # Valor inicial para la variable
+    cinit <- c(A = A0)
+    # Tiempos para los que existe dato de concentración
+    t <- notimes
+    # Parámetros a estimar
+    k1 <- parms[1]
+    k2 <- parms[2]
+    # Resolutor de ODE
+    out <- ode(y = cinit, times = t, func = rxnrate, parms = list(k1 = k1, k2 = k2), method = "rk4")
+
+    # Filtramos datos que contengan puntos en los que hay datos disponibles
+    outdf <- data.frame(out)
+    outdf <- outdf[outdf$time %in% notimes, ]
+    # Evalución de los valores predichos frente a los reales
+    preddf <- melt(outdf, id.var = "time", variable.name = "species", value.name = "conc")
+    expdf <- melt(RSV, id.var = "time", variable.name = "species", value.name = "conc")
+    ssqres <- preddf$conc - expdf$conc
+
+    # Devuelve los residuos predichos frente a los experimentales
+    return(ssqres)
+  }
+
+
+  # Ajuste de parámetros utilizando el algoritmo de Levenberg Marquart
+  # Estimación inicial de los parámetros
+  parms <- c(k1 = 0.5, k2 = 0.8)
+
+  # Fitting utilizando la función nls.lm
+  fitval <- nls.lm(par = parms, fn = ssq)
+  rse <- summary(fitval)$sigma # Error estándar residual
+
+  # Estimación de los parámetros
+  parest <- as.list(coef(fitval))
+
+  # Almacenamos los resultados de cada iteración en el data.frame
+  datos_reps <- rbind(datos_reps, data.frame(k = as.numeric(parest$k1), c = as.numeric(parest$k2), rse = rse))
+  print(summary(fitval))
+}
+```
+
+Generamos la tabla de resultados en formato látex utilizando la librería xtable
+```{r}
+rownames(datos_reps) <- NULL
+tabla_latex <- xtable(datos_reps, align = c("c", "c", "c", "c"), digits = 3)
+
+# Mostrar la tabla LaTeX en la consola
+print(tabla_latex)
+```
+
+
+Gráfico de las predicciones frente a los valores reales
+```{r}
+# Perfil previsto simulado para los parámetros estimados (media de las iteraciones)
+cinit <- c(A = control1[1, 17])
+t <- notimes
+parms <- list(k1 = mean(datos_reps$k), k2 = mean(datos_reps$c))
+# Resolución de la ecuación diferencial con los parámetros medios estimados
+out <- ode(y = cinit, times = t, func = rxnrate, parms = parms, method = "rk4")
+outdf <- data.frame(out)
+names(outdf) <- c("time", "ca_pred")
+
+
+# Superponer perfil predicho con datos experimentales
+tmppred <- melt(outdf, id.var = c("time"), variable.name = "species", value.name = "conc")
+tmpexp <- melt(control1$media, id.var = c("time"), variable.name = "species", value.name = "conc")
+
+# Crear un dataframe para los límites superior e inferior
+upper_limit <- tmpexp$conc + control1$sd
+lower_limit <- tmpexp$conc - control1$sd
+error_data <- data.frame(notimes = notimes, upper = upper_limit, lower = lower_limit)
+
+
+ggplot(data = tmppred, aes(x = notimes, y = conc)) +
+  geom_line(color = "red") +
+  geom_point(data = tmpexp, aes(x = notimes, y = conc)) +
+  geom_ribbon(aes(x = notimes, ymin = error_data$lower, ymax = error_data$upper), fill = "gray70", alpha = 0.5) + # Establece el color y la transparencia de la superficie gris
+  labs(x = "Tiempo (h)", y = "[Resistentes]", title = "") +
+  theme_bw() +
+  theme(
+    axis.text = element_text(size = 12),
+    axis.title = element_text(size = 14),
+    plot.title = element_text(size = 16, hjust = 0.5),
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    legend.position = "none"
+  )
+
+cat("k media es: ", mean(datos_reps$k), "\n")
+cat("C media es: ", mean(datos_reps$c), "\n")
+cat("rse medio es: ", mean(datos_reps$rse), "\n")
+```
+
+# ESTIMACIÓN MODELO CON FAGO CON LM
+
+```{r}
+library(readxl)
+# Importamos los datos de la infección con fagos a MOI 1
+set.seed(213)
+datos_marcos <- read_excel("./datos/fagos_moi1.xlsx")
+
+# datos_marcos <- datos_marcos[,]
+
+# Librerías necesarias
+library(ggplot2) # library for plotting
+library(reshape2) # library for reshaping data (tall-narrow <-> short-wide)
+library(deSolve) # library for solving differential equations
+library(minpack.lm) # library for least squares fit using levenberg-marquart algorithm
+
+RSV <- datos_marcos$media # Valores medios de las réplicas
+notimes <- datos_marcos$Time # Tiempos de medición
+
+# Parámetros fijados
+z <- 0.887
+k <- 0.538
+
+# rate function
+rxnrate <- function(t, c, parms) {
+  # Definimos los parámetros a estimar
+  mu <- parms$mu
+  rho <- parms$rho
+  eta <- parms$eta
+  ep <- parms$ep
+  beta <- parms$beta
+  gamma <- parms$gamma
+
+  # Definimos las ecuaciones diferenciales que componen el modelo
+  r <- rep(0, length(c))
+  omega <- 1 - (c["y"] + c["x"]) / z
+
+  r[1] <- k * (1 - mu) * c["y"] * omega - rho * c["phi"] * c["y"]
+  r[2] <- rho * c["phi"] * c["y"] - eta * c["yf"]
+  r[3] <- (k * mu * c["y"] + gamma * c["x"]) * omega - ep * c["x"]
+  r[4] <- beta * eta * c["yf"] - rho * c["phi"] * c["y"]
+
+  # la resolución de las derivadas es devuelta como una lista
+  # el orden de las derivadas tiene que ser el mismo que definimos a continuación
+  return(list(r))
+}
+
+
+ssq <- function(parms) {
+  # Concentraciones iniciales
+  cinit <- c(y = 0.11, yf = 0, x = 0, phi = 0.11)
+  # Tiempos de medida
+  t <- notimes
+  # Parámetros desde las estimaciones
+  mu <- parms[1]
+  rho <- parms[2]
+  eta <- parms[3]
+  ep <- parms[4]
+  beta <- parms[5]
+  gamma <- parms[6]
+  # Resolutor de ODE para un set de parámetros determinado
+  out <- ode(y = cinit, times = t, func = rxnrate, parms = list(mu = mu, rho = rho, eta = eta, ep = ep, beta = beta, gamma = gamma))
+
+  # Almacenamos los resultados de la resolución de la derivada en un data.frame
+  outdf <- data.frame(out)
+
+  # Sumamos las tres poblaciones: y + yf + x. Los datos experimentales representan su suma y queremos obtener la menor distancia respecto a ellos
+  outdf$sum <- data.frame(out)[, 2] + data.frame(out)[, 3] + data.frame(out)[, 4]
+  # Minimizamos los residuos
+  preddf <- outdf$sum
+  expdf <- RSV
+  ssqres <- preddf - expdf
+
+  # Devolvemos los resultados de la estimación
+  return(ssqres)
+}
+
+
+# FUNCIÓN PARA CONVERGENCIA CORRECTA A PARTIR DE PARÁMETROS INICIALES
+# Define la función para ajustar el modelo y verificar el resumen
+fit_model <- function(initial_params, max_attempts = 3000, step_sizes = c(mu = 0.05, rho = 0.05, eta = 0.05, ep = 0.05, gamma = 0.05)) {
+  best_fit <- NULL
+
+  for (attempt in 1:max_attempts) {
+    cat("Attempt:", attempt, "\n")
+
+    tryCatch(
+      {
+        fitval <- nls.lm(
+          par = initial_params,
+          fn = ssq,
+          control = nls.lm.control(maxiter = 1000),
+          lower = c(mu = 0, rho = 0, eta = 0, ep = 0, beta = 0, gamma = 0),
+          upper = c(mu = 1, rho = 1, eta = 1, ep = 1, beta = 350, gamma = Inf)
+        )
+
+        fit_summary <- summary(fitval)
+
+        if (!is.null(fit_summary)) {
+          cat("Successful fit on attempt", attempt, "\n")
+          if (is.null(best_fit) || sum(fitval$residuals^2) < sum(best_fit$fit$residuals^2)) {
+            best_fit <- list(fit = fitval, summary = fit_summary, params = initial_params)
+          }
+        }
+      },
+      error = function(e) {
+        cat("Error on attempt", attempt, ":", e$message, "\n")
+      }
+    )
+
+    # Perturba cada parámetro de forma aleatoria
+    perturb_params <- initial_params
+    for (param in names(step_sizes)) {
+      perturb_params[param] <- perturb_params[param] + runif(1, -step_sizes[param], step_sizes[param])
+    }
+
+    # Asegura que los parámetros estén dentro de los límites
+    perturb_params[c("mu", "rho", "eta")] <- pmin(pmax(perturb_params[c("mu", "rho", "eta")], 0), 1)
+    perturb_params[c("ep", "gamma")] <- pmax(perturb_params[c("ep", "gamma")], 0)
+
+    initial_params <- perturb_params
+  }
+
+  if (is.null(best_fit)) {
+    stop("Failed to find a successful fit after", max_attempts, "attempts")
+  } else {
+    return(best_fit)
+  }
+}
+
+# Parámetros iniciales
+initial_params <- c(mu = 0.6, rho = 0.9, eta = 0.9, ep = 0.15, beta = 100, gamma = 0.6)
+
+# Tamaños de paso para la perturbación de cada parámetro
+step_sizes <- c(mu = 0.05, rho = 0.05, eta = 0.05, ep = 0.05, gamma = 0.05)
+
+# Ejecuta la función de ajuste
+result <- fit_model(initial_params, step_sizes = step_sizes)
+
+# Imprime los resultados
+print(result$summary)
+print(result$params)
+
+# Hacemos el ajuste utilizando el algoritmo de Levernberg-Marquardt
+# Valores iniciales para que empiece a correr el algoritmo
+# parms <- c(mu=0.6, rho=0.9, eta=0.9,ep=0.01, beta=80, gamma=0.6)
+parms <- result$params
+
+# Hacemos que ningún parámetro pueda ser negativo
+fitval <- nls.lm(par = parms, fn = ssq, control = nls.lm.control(maxiter = 1000), lower = c(mu = 0, rho = 0, eta = 0, ep = 0, beta = 0, gamma = 0), upper = c(mu = 1, rho = 1, eta = 1, ep = 1, beta = 350, gamma = Inf))
+
+summary(fitval)
+
+# Parámetros estimados
+parest <- as.list(coef(fitval))
+
+# simulated predicted profile at estimated parameter values
+cinit <- c(y = 0.11, yf = 0, x = 0, phi = 0.11)
+t <- notimes
+parms <- as.list(parest)
+
+# Resolvemos las ODE para el set de parámetros estimado
+out <- ode(y = cinit, times = t, func = rxnrate, parms = parms)
+
+outdf <- data.frame(out)
+outdf$sum <- data.frame(out)[, 2] + data.frame(out)[, 3] + data.frame(out)[, 4]
+
+plot(out)
+```
+
+Representamos las poblaciones frente a los valores medios reales
+```{r}
+library(reshape2)
+# Definimos los valores reales y las estimaciones para representar
+tmppred <- melt(outdf$sum, id.var = c("time"), value.name = "conc")
+tmpexp <- melt(RSV, id.var = c("time"), value.name = "conc")
+y <- melt(outdf[, 2], id.var = c("time"), value.name = "conc")
+yf <- melt(outdf[, 3], id.var = c("time"), value.name = "conc")
+x <- melt(outdf[, 4], id.var = c("time"), value.name = "conc")
+phi <- melt(outdf[, 5], id.var = c("time"), value.name = "conc")
+
+# Definimos los límites según sd
+upper_limit <- tmpexp$conc + datos_marcos$sd
+lower_limit <- tmpexp$conc - datos_marcos$sd
+
+error_data <- data.frame(notimes = notimes, upper = upper_limit, lower = lower_limit)
+
+poblaciones <- ggplot() +
+
+  # Líneas y puntos para cada conjunto de datos
+  geom_line(data = tmppred, aes(x = notimes, y = conc, color = "y+yf+x"), size = 1) +
+  geom_ribbon(aes(x = notimes, ymin = error_data$lower, ymax = error_data$upper), fill = "gray70", alpha = 0.3) +
+  geom_point(data = tmpexp, aes(x = notimes, y = conc)) +
+  geom_line(data = y, aes(x = notimes, y = conc, color = "y"), size = 1) +
+  geom_line(data = yf, aes(x = notimes, y = conc, color = "yf"), size = 1) +
+  geom_line(data = x, aes(x = notimes, y = conc, color = "x"), size = 1) +
+  # Añadir línea roja discontinua en y = 0.1
+  geom_hline(yintercept = 0.1, linetype = "dashed", color = "red") +
+  annotate("text", x = 10, y = 0.1, label = "Límite de detección", vjust = -1, color = "red") +
+  # Ajustar los colores manualmente
+  scale_color_manual(
+    name = "Poblaciones",
+    values = c("y+yf+x" = "red", "y" = "blue", "yf" = "green", "x" = "orange"), breaks = c("y", "yf", "x", "y+yf+x")
+  ) +
+
+  # Tema del gráfico
+  theme_bw() +
+
+  # Personalización del tema
+  theme(
+    legend.position = c(0.95, 0.25), # Ajustar la posición de la leyenda
+    legend.justification = c(1, 0), # Justificación de la leyenda
+    legend.box = "horizontal", # Orientación de la caja de la leyenda
+    legend.margin = margin(0, 0, 0, 0), # Ajustar los márgenes de la leyenda
+    plot.title = element_text(size = 14, hjust = 0.5), # Tamaño y justificación del título
+    axis.title = element_text(size = 12), # Tamaño del texto del eje
+    legend.title = element_text(size = 12), # Tamaño del texto de la leyenda
+    legend.text = element_text(size = 10),
+    panel.grid.major = element_blank(), # Quitar las líneas de la cuadrícula mayor
+    panel.grid.minor = element_blank()
+  ) + # Tamaño del texto de la leyenda
+  labs(
+    title = "Gráfico de Poblaciones", # Título del gráfico
+    x = "Tiempo", # Etiqueta del eje x
+    y = "OD"
+  ) # Etiqueta del eje y
+poblaciones
+# ggsave("poblaciones_moi1.jpg", poblaciones, width = 8, height = 5)
+```
+
+
+Representamos la dinámica del fago
+```{r}
+fago <- ggplot() +
+
+  # Líneas y puntos para cada conjunto de datos
+  geom_line(data = phi, aes(x = notimes, y = conc, color = "phi"), size = 1) +
+  scale_color_manual(
+    name = "",
+    values = c("phi" = "purple")
+  ) +
+  # Tema del gráfico
+  theme_bw() +
+
+  # Personalización del tema
+  theme(
+    legend.position = "none", # Ajustar la posición de la leyenda
+    legend.justification = c(1, 0), # Justificación de la leyenda
+    legend.box = "horizontal", # Orientación de la caja de la leyenda
+    legend.margin = margin(0, 0, 0, 0), # Ajustar los márgenes de la leyenda
+    plot.title = element_text(size = 14, hjust = 0.5), # Tamaño y justificación del título
+    axis.title = element_text(size = 12), # Tamaño del texto del eje
+    legend.title = element_text(size = 12), # Tamaño del texto de la leyenda
+    legend.text = element_text(size = 10),
+    panel.grid.major = element_blank(), # Quitar las líneas de la cuadrícula mayor
+    panel.grid.minor = element_blank()
+  ) + # Tamaño del texto de la leyenda
+  labs(
+    title = "Progresión bacteriófagos en el medio", # Título del gráfico
+    x = "Tiempo", # Etiqueta del eje x
+    y = "Cantidad bacteriófagos"
+  ) # Etiqueta del eje y
+fago
+# ggsave("fago_moi1.jpg", fago, width = 8, height = 5)
+```
