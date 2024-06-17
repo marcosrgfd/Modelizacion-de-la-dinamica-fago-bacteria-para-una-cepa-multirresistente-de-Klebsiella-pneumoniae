@@ -1,0 +1,418 @@
+# SIMULACIONES PARÁMETROS MODELO
+
+Librerías utilizadas:
+```{r}
+library(deSolve)
+library(gridExtra)
+library(ggplot2)
+library(viridis)
+library(patchwork)
+```
+
+El siguiente código fue utilizado para modificar cada parámetro en un rango manteniendo el resto constantes en un valor arbitrario. Se representa la serie temporal para cada población.
+```{r fig.width=8, fig.height=5.5}
+combos <- function(param, sec, titulo) {
+  LotVmod <- function(Time, State, Pars) {
+    with(as.list(c(State, Pars)), {
+      omega <- 1 - (y + x) / C
+
+      dy <- k * (1 - mu) * y * omega - rho * phi * y
+      dyf <- rho * phi * y - eta * yf
+      dx <- (k * mu * y + gamma * x) * omega - ep * x
+      dphi <- beta * eta * yf - rho * phi * y
+      return(list(c(dy, dyf, dx, dphi)))
+    })
+  }
+
+  n <- 1000 # Número de simulaciones
+  param.name <- param # Parámetro a perturbar
+  param.seq <- sec # Rango en que se mueve el parámetro
+
+  # Definimos los parámetros
+  Pars <- c(k = 0.6, mu = 0.6, rho = 0.8, eta = 0.8, gamma = 0.6, ep = 0.15, beta = 150, C = 0.9)
+  Time <- seq(0, 25, length = n)
+  # Estados iniciales de las poblaciones
+  State <- c(y = 0.11, yf = 0, x = 0, phi = 0.11)
+
+  param.index <- which(param.name == names(Pars))
+  out <- list()
+  for (i in 1:length(param.seq)) {
+    out[[i]] <- matrix(0, n, length(State))
+  }
+
+  for (i in 1:length(param.seq)) {
+    # set params
+    Pars.loop <- Pars
+    Pars.loop[param.index] <- param.seq[i]
+    init <- ode(y = State, times = Time, func = LotVmod, parms = Pars.loop)
+    out[[i]] <- ode(y = init[1, -1], times = Time, LotVmod, Pars.loop)[, -1]
+  }
+
+
+  datos <- data.frame(y = numeric(), yf = numeric(), x = numeric(), phi = numeric())
+  for (i in c(1:n)) {
+    datos <- rbind(datos, data.frame(out[i]))
+  }
+
+  datos$k <- as.factor(rep(c(1:50), each = n))
+  datos$Time <- rep(Time, 50)
+  datos$valor_k <- rep(param.seq, each = n)
+
+  # Plot the variable 'x' over time for all parameter values
+
+  kx <- ggplot(datos, aes(x = Time, y = x, color = valor_k)) +
+    geom_point() +
+    scale_color_gradient(low = "lightblue", high = "darkred") +
+    labs(y = "Resistentes (x)") +
+    theme_minimal() +
+    theme(legend.position = "none")
+
+
+  ky <- ggplot(datos, aes(x = Time, y = y, color = valor_k)) +
+    geom_point() +
+    scale_color_gradient(low = "lightblue", high = "darkred", name = titulo) +
+    labs(y = "Salvaje (y)") +
+    theme_minimal() +
+    theme(
+      legend.position = c(0.9, 0.7), # Puedes ajustar la posición de la leyenda
+      legend.box = "vertical", # Coloca la leyenda en una caja horizontal
+      legend.margin = margin(t = 0, r = 0, b = 0, l = 0) # Ajusta los márgenes de la leyenda
+    )
+
+  kphi <- ggplot(datos, aes(x = Time, y = phi, color = valor_k)) +
+    geom_point() +
+    scale_color_gradient(low = "lightblue", high = "darkred") +
+    labs(y = expression(paste("Fago (", phi, ")"))) +
+    theme_minimal() +
+    theme(legend.position = "none")
+
+
+  kyf <- ggplot(datos, aes(x = Time, y = yf, color = valor_k)) +
+    geom_point() +
+    scale_color_gradient(low = "lightblue", high = "darkred") +
+    labs(y = expression(paste("Infectada (", y[f], ")"))) +
+    theme_minimal() +
+    theme(legend.position = "none")
+
+  # Combina los cuatro gráficos en una sola figura
+  combined_plot <- grid.arrange(kx, ky, kphi, kyf, ncol = 2)
+  return(combined_plot)
+}
+
+
+# EJECUTAMOS LA FUNCIÓN PARA TODOS LOS PARÁMETROS
+combined_k <- combos(param = "k", sec = seq(0.1, 1, length = 50), titulo = "Valor k")
+
+combined_mu <- combos(param = "mu", sec = seq(0.1, 1, length = 50), titulo = expression(paste("Valor ", mu)))
+
+combined_rho <- combos(param = "rho", sec = seq(0.1, 1, length = 50), titulo = expression(paste("Valor ", rho)))
+
+combined_eta <- combos(param = "eta", sec = seq(0.1, 1, length = 50), titulo = expression(paste("Valor ", eta)))
+
+combined_gamma <- combos(param = "gamma", sec = seq(0.1, 1, length = 50), titulo = expression(paste("Valor ", gamma)))
+
+combined_ep <- combos(param = "ep", sec = seq(0.01, 0.5, length = 50), titulo = expression(paste("Valor ", epsilon)))
+
+combined_beta <- combos(param = "beta", sec = seq(30, 300, length = 50), titulo = expression(paste("Valor ", beta)))
+
+combined_C <- combos(param = "c", sec = seq(0.1, 1, length = 50), titulo = "Valor C")
+
+
+# ggsave("combined_k.jpg", plot = combined_k, width = 8, height = 6, units = "in", dpi = 300)
+# ggsave("combined_mu.jpg", plot = combined_mu, width = 8, height = 6, units = "in", dpi = 300)
+# ggsave("combined_rho.jpg", plot = combined_rho, width = 8, height = 6, units = "in", dpi = 300)
+# ggsave("combined_eta.jpg", plot = combined_eta, width = 8, height = 6, units = "in", dpi = 300)
+# ggsave("combined_gamma.jpg", plot = combined_gamma, width = 8, height = 6, units = "in", dpi = 300)
+# ggsave("combined_ep.jpg", plot = combined_ep, width = 8, height = 6, units = "in", dpi = 300)
+# ggsave("combined_beta.jpg", plot = combined_beta, width = 8, height = 6, units = "in", dpi = 300)
+# ggsave("combined_C.jpg", plot = combined_C, width = 8, height = 6, units = "in", dpi = 300)
+```
+
+# SIMULACIÓN DIFERENTES CONDICIONES INICIALES
+
+Este código permite representar el comportamiento de las poblaciones al alterar la condición inicial de 'y' e 'phi' (ya que 'x' e 'y_f' no existen a tiempo inicial y es 0).
+```{r fig.width=7, fig.height=5}
+library(deSolve)
+library(gridExtra)
+library(ggplot2)
+library(viridis) # Biblioteca para paletas de colores profesionales
+
+combos <- function(initial_conditions, titulo) {
+  LotVmod <- function(Time, State, Pars) {
+    with(as.list(c(State, Pars)), {
+      omega <- 1 - (y + x) / C
+
+      dy <- k * (1 - mu) * y * omega - rho * phi * y
+      dyf <- rho * phi * y - eta * yf
+      dx <- (k * mu * y + gamma * x) * omega - ep * x
+      dphi <- beta * eta * yf - rho * phi * y
+      return(list(c(dy, dyf, dx, dphi)))
+    })
+  }
+
+  n <- 1000 # Número de simulaciones
+  init_cond <- initial_conditions # Rango de condiciones iniciales
+
+  # Definimos los parámetros
+  Pars <- c(k = 0.6, mu = 0.6, rho = 0.8, eta = 0.8, gamma = 0.6, ep = 0.15, beta = 150, C = 0.9)
+  Time <- seq(0, 25, length = n)
+
+  out <- list()
+  for (i in 1:length(init_cond)) {
+    out[[i]] <- matrix(0, n, length(init_cond[[i]]))
+  }
+
+  for (i in 1:length(init_cond)) {
+    # set initial conditions
+    init <- ode(y = init_cond[[i]], times = Time, func = LotVmod, parms = Pars)
+    out[[i]] <- ode(y = init[1, -1], times = Time, func = LotVmod, parms = Pars)[, -1]
+  }
+
+  datos <- data.frame(y = numeric(), yf = numeric(), x = numeric(), phi = numeric())
+  init_conditions_legend <- data.frame(Simulacion = 1:length(init_cond), y_init = sprintf("%.2f", sapply(init_cond, function(x) x["y"])), phi_init = sprintf("%.2f", sapply(init_cond, function(x) x["phi"])))
+  for (i in 1:length(out)) {
+    datos <- rbind(datos, data.frame(out[[i]]))
+  }
+
+  datos$Simulacion <- as.factor(rep(c(1:length(init_cond)), each = n))
+  datos$Time <- rep(Time, length(init_cond))
+
+  # Plot the variable 'x' over time for all initial conditions
+  kx <- ggplot(datos, aes(x = Time, y = x, color = Simulacion)) +
+    geom_line(size = 1.2) + # Aumentado el grosor de las líneas
+    scale_color_viridis(discrete = TRUE, labels = paste0("y0 = ", init_conditions_legend$y_init, ";    phi0 = ", init_conditions_legend$phi_init)) + # Utiliza la paleta viridis
+    labs(y = "Resistentes (x)") +
+    theme_minimal(base_size = 10) +
+    theme(
+      legend.position = "none",
+      panel.grid = element_blank(),
+      axis.line = element_line() # Mantener las líneas de los ejes
+    )
+
+  ky <- ggplot(datos, aes(x = Time, y = y, color = Simulacion)) +
+    geom_line(size = 1.2) +
+    scale_color_viridis(discrete = TRUE, name = titulo, labels = paste0("y0 = ", init_conditions_legend$y_init, ";    phi0 = ", init_conditions_legend$phi_init)) +
+    labs(y = "Salvaje (y)") +
+    theme_minimal(base_size = 10) +
+    theme(
+      legend.position = c(0.7, 0.6), # Ajusta la posición de la leyenda
+      legend.box = "vertical", # Coloca la leyenda en una caja vertical
+      legend.margin = margin(t = 0, r = 0, b = 0, l = 0), # Ajusta los márgenes de la leyenda
+      panel.grid = element_blank(),
+      axis.line = element_line() # Mantener las líneas de los ejes
+    )
+
+  kphi <- ggplot(datos, aes(x = Time, y = phi, color = Simulacion)) +
+    geom_line(size = 1.2) +
+    scale_color_viridis(discrete = TRUE, labels = paste0("y0 = ", init_conditions_legend$y_init, ";    phi0 = ", init_conditions_legend$phi_init)) +
+    labs(y = expression(paste("Fago (", phi, ")"))) +
+    theme_minimal(base_size = 10) +
+    theme(
+      legend.position = "none",
+      panel.grid = element_blank(),
+      axis.line = element_line() # Mantener las líneas de los ejes
+    )
+
+  kyf <- ggplot(datos, aes(x = Time, y = yf, color = Simulacion)) +
+    geom_line(size = 1.2) +
+    scale_color_viridis(discrete = TRUE, labels = paste0("y0 = ", init_conditions_legend$y_init, ";    phi0 = ", init_conditions_legend$phi_init)) +
+    labs(y = expression(paste("Infectada (", y[f], ")"))) +
+    theme_minimal(base_size = 10) +
+    theme(
+      legend.position = "none",
+      panel.grid = element_blank(),
+      axis.line = element_line() # Mantener las líneas de los ejes
+    )
+
+  # Combina los cuatro gráficos en una sola figura
+  combined_plot <- grid.arrange(kx, ky, kphi, kyf, ncol = 2)
+  return(combined_plot)
+}
+
+# EJECUTAMOS LA FUNCIÓN CON VARIACIONES EN LAS CONDICIONES INICIALES
+
+# phi fija y variamos y
+initial_conditions_y <- list(
+  c(y = 0.01, yf = 0, x = 0, phi = 0.10),
+  c(y = 0.05, yf = 0, x = 0, phi = 0.10),
+  c(y = 0.10, yf = 0, x = 0, phi = 0.10),
+  c(y = 0.20, yf = 0, x = 0, phi = 0.10),
+  c(y = 0.30, yf = 0, x = 0, phi = 0.10)
+)
+
+combined_plot_y <- combos(initial_conditions_y, titulo = "Condiciones Iniciales")
+
+# ggsave("condiciones_iniciales_y.jpg", plot = combined_plot_y, width = 8, height = 6, units = "in", dpi = 300)
+
+# y fija y variamos phi
+initial_conditions_phi <- list(
+  c(y = 0.10, yf = 0, x = 0, phi = 0.01),
+  c(y = 0.10, yf = 0, x = 0, phi = 0.10),
+  c(y = 0.10, yf = 0, x = 0, phi = 0.50),
+  c(y = 0.10, yf = 0, x = 0, phi = 1.00),
+  c(y = 0.10, yf = 0, x = 0, phi = 2.00)
+)
+
+combined_plot_phi <- combos(initial_conditions_phi, titulo = "Condiciones Iniciales")
+
+# ggsave("condiciones_iniciales_phi.jpg", plot = combined_plot_phi, width = 8, height = 6, units = "in", dpi = 300)
+
+# variamos ambas
+initial_conditions_ambas <- list(
+  c(y = 0.01, yf = 0, x = 0, phi = 1.00),
+  c(y = 0.20, yf = 0, x = 0, phi = 0.01),
+  c(y = 0.10, yf = 0, x = 0, phi = 2.00),
+  c(y = 0.20, yf = 0, x = 0, phi = 0.10),
+  c(y = 0.01, yf = 0, x = 0, phi = 0.01)
+)
+
+combined_plot_ambas <- combos(initial_conditions_ambas, titulo = "Condiciones Iniciales")
+
+# ggsave("condiciones_iniciales_ambas.jpg", plot = combined_plot_ambas, width = 8, height = 6, units = "in", dpi = 300)
+```
+
+# PUNTOS EQUILIBRIO
+
+El siguiente código permite encontrar el punto de equilibrio estable que alcanzan las poblaciones en función del valor de cada parámetro, manteniendo el resto constantes en un valor arbitrario.
+```{r}
+library(deSolve)
+library(ggplot2)
+library(patchwork)
+library(gridExtra)
+
+LotVmod <- function(Time, State, Pars) {
+  with(as.list(c(State, Pars)), {
+    omega <- 1 - (y + x) / C
+
+    dy <- k * (1 - mu) * y * omega - rho * phi * y
+    dyf <- rho * phi * y - eta * yf
+    dx <- (k * mu * y + gamma * x) * omega - ep * x # Assuming gamma = k
+    dphi <- beta * eta * yf - rho * phi * y
+    return(list(c(dy, dyf, dx, dphi)))
+  })
+}
+
+run_simulation <- function(param.name, param.seq, n = 2000, npar = 500, lab.x) {
+  # Valor arbitrario de cada parámetro
+  Pars <- c(k = 0.6, mu = 0.6, rho = 0.8, eta = 0.8, gamma = 0.6, ep = 0.15, beta = 150, C = 0.9)
+  Time <- seq(0, 25, length = n)
+  State <- c(y = 0.11, yf = 0, x = 0, phi = 0.11)
+
+  param.index <- which(param.name == names(Pars))
+  out <- vector("list", length(param.seq))
+  for (i in seq_along(param.seq)) {
+    out[[i]] <- matrix(0, n, length(State))
+  }
+
+  for (i in seq_along(param.seq)) {
+    # Set params
+    Pars.loop <- Pars
+    Pars.loop[param.index] <- param.seq[i]
+    # Converge
+    init <- ode(y = State, times = Time, func = LotVmod, parms = Pars.loop)
+    # Get converged points
+    out[[i]] <- ode(y = init[nrow(init), -1], times = Time, func = LotVmod, parms = Pars.loop)[, -1]
+  }
+
+  datos <- data.frame(y = numeric(), yf = numeric(), x = numeric(), phi = numeric())
+  for (i in seq_along(out)) {
+    datos <- rbind(datos, data.frame(out[[i]]))
+  }
+
+  datos$k <- as.factor(rep(seq_len(npar), each = n))
+  datos$Time <- rep(Time, npar)
+  datos$valor_par <- rep(param.seq, each = n)
+
+  # Equilibrium Points for the first set of variables
+  plot.variable.left <- c("x", "y", "yf")
+  datos_eq.left <- data.frame(parametro = numeric(), equilibrio = numeric(), variable = character())
+
+  for (j in plot.variable.left) {
+    for (i in seq_along(param.seq)) {
+      datos_eq.left <- rbind(datos_eq.left, data.frame(parametro = param.seq[i], equilibrio = out[[i]][n, j], variable = j))
+    }
+  }
+
+  datos_eq.left$variable <- as.factor(datos_eq.left$variable)
+
+  plot_left <- ggplot(datos_eq.left, aes(x = parametro, y = equilibrio, color = variable)) +
+    geom_point() +
+    scale_color_manual(values = c("red", "blue", "green")) +
+    labs(y = paste("Equilibrio"), x = lab.x) +
+    theme_minimal() +
+    theme(
+      legend.position = "bottom",
+      panel.grid.major = element_blank(), # Eliminar líneas de la cuadrícula principal
+      panel.grid.minor = element_blank(), # Eliminar líneas de la cuadrícula secundaria
+      panel.border = element_blank(), # Eliminar borde del panel
+      axis.line = element_line(colour = "black") # Añadir línea de ejes en color
+    ) +
+    guides(color = guide_legend(title = NULL))
+
+  # Equilibrium Points for the second set of variables
+  plot.variable.right <- c("phi")
+  datos_eq.right <- data.frame(parametro = numeric(), equilibrio = numeric(), variable = character())
+
+  for (j in plot.variable.right) {
+    for (i in seq_along(param.seq)) {
+      datos_eq.right <- rbind(datos_eq.right, data.frame(parametro = param.seq[i], equilibrio = out[[i]][n, j], variable = j))
+    }
+  }
+
+  datos_eq.right$variable <- as.factor(datos_eq.right$variable)
+
+  plot_right <- ggplot(datos_eq.right, aes(x = parametro, y = equilibrio, color = variable)) +
+    geom_point() +
+    scale_color_manual(values = c("purple")) +
+    labs(y = NULL, x = lab.x) +
+    theme_minimal() +
+    theme(
+      legend.position = "bottom",
+      panel.grid.major = element_blank(), # Eliminar líneas de la cuadrícula principal
+      panel.grid.minor = element_blank(), # Eliminar líneas de la cuadrícula secundaria
+      panel.border = element_blank(), # Eliminar borde del panel
+      axis.line = element_line(colour = "black"), # Añadir línea de ejes en color
+    ) +
+    guides(color = guide_legend(title = NULL))
+
+  # Combine plots
+  combined_plot <- grid.arrange(plot_left, plot_right, ncol = 2)
+  # combined_plot <- plot_left + plot_right + plot_layout(ncol = 2)
+  # combined_plot <- combined_plot & theme(legend.position = "bottom") & guides(color = guide_legend(title = NULL))
+
+  return(combined_plot)
+}
+
+
+a <- run_simulation("k", seq(0, 1, length.out = 500), n = 2000, lab.x = "k")
+
+b <- run_simulation("mu", seq(0, 1, length.out = 500), n = 2000, lab.x = expression(paste(mu)))
+
+c <- run_simulation("rho", seq(0, 1, length.out = 500), n = 2000, lab.x = expression(paste(rho)))
+c2 <- run_simulation("rho", seq(0, 0.01, length.out = 500), n = 2000, lab.x = expression(paste(rho)))
+
+d <- run_simulation("eta", seq(0, 1, length.out = 500), n = 2000, lab.x = expression(paste(eta)))
+d2 <- run_simulation("eta", seq(0, 0.025, length.out = 2000), n = 2000, npar = 2000, lab.x = expression(paste(eta)))
+
+e <- run_simulation("gamma", seq(0, 1, length.out = 500), n = 2000, lab.x = expression(paste(gamma)))
+
+f <- run_simulation("ep", seq(0, 1, length.out = 500), n = 2000, lab.x = expression(paste(epsilon)))
+
+g <- run_simulation("beta", seq(0, 350, length.out = 500), n = 2000, lab.x = expression(paste(beta)))
+g2 <- run_simulation("beta", seq(0, 5, length.out = 500), n = 2000, lab.x = expression(paste(beta)))
+
+h <- run_simulation("C", seq(0.1, 1, length.out = 500), n = 2000, lab.x = "C")
+
+
+ggsave("plot_eq_k.jpg", plot = a, width = 6, height = 3.5, units = "in", dpi = 300)
+ggsave("plot_eq_mu.jpg", plot = b, width = 6, height = 3.5, units = "in", dpi = 300)
+ggsave("plot_eq_rho.jpg", plot = c, width = 6, height = 3.5, units = "in", dpi = 300)
+ggsave("plot_eq_rho2.jpg", plot = c2, width = 6, height = 3.5, units = "in", dpi = 300)
+ggsave("plot_eq_eta.jpg", plot = d, width = 6, height = 3.5, units = "in", dpi = 300)
+ggsave("plot_eq_eta2.jpg", plot = d2, width = 6, height = 3.5, units = "in", dpi = 300)
+ggsave("plot_eq_gamma.jpg", plot = e, width = 6, height = 3.5, units = "in", dpi = 300)
+ggsave("plot_eq_ep.jpg", plot = f, width = 6, height = 3.5, units = "in", dpi = 300)
+ggsave("plot_eq_beta.jpg", plot = g, width = 6, height = 3.5, units = "in", dpi = 300)
+ggsave("plot_eq_beta2.jpg", plot = g2, width = 6, height = 3.5, units = "in", dpi = 300)
+ggsave("plot_eq_C.jpg", plot = h, width = 6, height = 3.5, units = "in", dpi = 300)
+```
