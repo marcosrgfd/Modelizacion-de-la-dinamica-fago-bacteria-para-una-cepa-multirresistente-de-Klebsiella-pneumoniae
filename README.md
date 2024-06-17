@@ -19,16 +19,16 @@ El repositorio se divide en los siguientes archivos:
 
 Para reproducir los resultados y análisis presentados en el trabajo, sigue estos pasos:
 
-1. **Descargar la carpeta de datos y añadirla al directorio de trabajo**:
+1. **Descargar la carpeta de datos y añadirla al directorio de trabajo.** 
    
-2. **Descargar los archivos de código en formato RMarkdown**:
+2. **Descargar los archivos de código en formato RMarkdown.** Cada fichero incluye indicaciones adicionales que pueden ser necesarias.
    
 3. **Abrir los archivos RMarkdown** en RStudio y ejecutar los chunks de código según sea necesario.
 
 ## Requisitos
 
 Asegúrate de tener las siguientes dependencias instaladas para ejecutar los scripts correctamente:
-- R
+- R 4.3.2 o superior
 - RStudio
 - Paquetes R necesarios (detallados en cada archivo .Rmd)
 
