@@ -9,7 +9,7 @@ library(viridis)
 library(patchwork)
 ```
 
-
+Representación de series temporales con modificación individual de cada parámetro mantiendo constante el resto en valores arbitrarios:
 ```{r fig.width=8, fig.height=5.5}
 combos <- function(param, sec, titulo) {
   LotVmod <- function(Time, State, Pars) {
@@ -25,7 +25,7 @@ combos <- function(param, sec, titulo) {
   }
 
   n <- 1000 # Número de simulaciones
-  param.name <- param # Parámetro a perturbar
+  param.name <- param # Parámetro a modificar
   param.seq <- sec # Rango en que se mueve el parámetro
 
   # Definimos los parámetros
